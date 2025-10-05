@@ -18,7 +18,7 @@ except ImportError:
     TTS_WORKS = False
 
 try:
-    from googletrans import Translator
+    from deep_translator import GoogleTranslator
     TRANSLATE_WORKS = True
 except ImportError:
     TRANSLATE_WORKS = False
@@ -60,7 +60,7 @@ if not TTS_WORKS:
     st.sidebar.error("⚠️ Install TTS: pip install gtts")
 
 if not TRANSLATE_WORKS and voice_language != "English":
-    st.sidebar.warning("⚠️ For Hindi/Kannada: pip install googletrans==4.0.0-rc1")
+    st.sidebar.warning("⚠️ For translations: pip install deep-translator")
 
 # Enhanced Voice Input Section
 st.header("🎤 Voice Input System")
@@ -184,7 +184,21 @@ question = st.text_area(
     placeholder="Type or paste your question here..."
 )
 
-# FIXED: HTML5 Audio TTS function - Full text, no autoplay
+# FIXED: Translation function using deep-translator
+def translate_text(text, target_language):
+    """Translate text using deep-translator (more reliable than googletrans)"""
+    if not TRANSLATE_WORKS or target_language == "English":
+        return text
+    
+    try:
+        lang_code = VOICE_LANGS[target_language]["code"]
+        translated = GoogleTranslator(source='auto', target=lang_code).translate(text)
+        return translated
+    except Exception as e:
+        st.warning(f"Translation failed: {str(e)}, using English")
+        return text
+
+# FIXED: HTML5 Audio TTS function with deep-translator
 def create_voice_response_html(text, target_language="English", ai_name="AI"):
     """Create voice response with HTML5 audio player - FULL TEXT VERSION"""
     
@@ -197,16 +211,13 @@ def create_voice_response_html(text, target_language="English", ai_name="AI"):
         lang_code = lang_config["code"]
         tld = lang_config["tld"]
         
-        # USE FULL TEXT - removed the [:500] limit
         text_to_speak = text.strip()
         
-        # Translate if needed
+        # Translate if needed using deep-translator
         if target_language != "English" and TRANSLATE_WORKS:
             try:
                 st.info(f"🔄 Translating {ai_name} response to {target_language}...")
-                translator = Translator()
-                translated = translator.translate(text_to_speak, dest=lang_code)
-                text_to_speak = translated.text
+                text_to_speak = translate_text(text_to_speak, target_language)
                 st.success(f"✅ Translation complete!")
             except Exception as e:
                 st.warning(f"⚠️ Translation failed, using English")
@@ -225,7 +236,7 @@ def create_voice_response_html(text, target_language="English", ai_name="AI"):
         audio_bytes = audio_fp.read()
         audio_base64 = base64.b64encode(audio_bytes).decode()
         
-        audio_duration = len(audio_bytes) / 1024  # Rough estimate
+        audio_duration = len(audio_bytes) / 1024
         st.success(f"✅ {target_language} audio generated successfully! (~{int(audio_duration)}KB)")
         
         # Return HTML5 audio player WITHOUT autoplay
@@ -317,7 +328,6 @@ if st.button("🤖 Get AI Responses with Voice", type="primary", use_container_w
                     st.success("✅ OpenAI Response received!")
                     st.write(response)
                     
-                    # Generate and play audio
                     audio_html = create_voice_response_html(response, voice_language, "OpenAI")
                     if audio_html:
                         st.markdown(audio_html, unsafe_allow_html=True)
@@ -364,4 +374,3 @@ st.markdown("""
     <p><strong>Voice Input | 3 AI Models | Multilingual Audio Output</strong></p>
 </div>
 """, unsafe_allow_html=True)
-
