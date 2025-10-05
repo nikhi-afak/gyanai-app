@@ -3,6 +3,7 @@ import os
 import base64
 from io import BytesIO
 import requests
+import time
 
 # Simple imports
 try:
@@ -17,7 +18,7 @@ try:
 except ImportError:
     TTS_WORKS = False
 
-# Translation works via direct API - no library needed
+# Translation works via direct API
 TRANSLATE_WORKS = True
 
 # Page setup
@@ -178,16 +179,15 @@ question = st.text_area(
     placeholder="Type or paste your question here..."
 )
 
-# Translation function using direct API - no library required
+# Translation function
 def translate_text(text, target_language):
-    """Translate using Google Translate API directly - no external library needed"""
+    """Translate using Google Translate API directly"""
     if target_language == "English":
         return text
     
     try:
         lang_code = VOICE_LANGS[target_language]["code"]
         
-        # Using Google Translate free endpoint
         url = "https://translate.googleapis.com/translate_a/single"
         params = {
             'client': 'gtx',
@@ -206,15 +206,14 @@ def translate_text(text, target_language):
             return text
             
     except Exception as e:
-        st.warning(f"Translation to {target_language} unavailable, using English")
         return text
 
-# HTML5 Audio TTS function with chunking for full text
+# COMPLETELY REWRITTEN TTS - Multiple audio chunks approach
 def create_voice_response_html(text, target_language="English", ai_name="AI"):
-    """Create voice response with HTML5 audio player - handles long text"""
+    """Generate audio in chunks and create multiple players if needed"""
     
     if not TTS_WORKS:
-        st.error("❌ Install: pip install gtts")
+        st.error("Install: pip install gtts")
         return None
     
     try:
@@ -226,65 +225,85 @@ def create_voice_response_html(text, target_language="English", ai_name="AI"):
         
         # Translate if needed
         if target_language != "English":
+            st.info(f"Translating {ai_name} response to {target_language}...")
+            text_to_speak = translate_text(text_to_speak, target_language)
+            st.success("Translation complete!")
+        
+        st.info(f"Generating {target_language} audio for {ai_name}...")
+        
+        # Split text into chunks of ~150 characters (works better for gTTS)
+        max_chunk_size = 150
+        words = text_to_speak.split()
+        chunks = []
+        current_chunk = ""
+        
+        for word in words:
+            if len(current_chunk) + len(word) + 1 <= max_chunk_size:
+                current_chunk += word + " "
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = word + " "
+        
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+        
+        # Generate audio for each chunk
+        audio_players = []
+        
+        for i, chunk in enumerate(chunks):
             try:
-                st.info(f"🔄 Translating {ai_name} response to {target_language}...")
-                text_to_speak = translate_text(text_to_speak, target_language)
-                st.success(f"✅ Translation complete!")
+                # Generate TTS with retry logic
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        tts = gTTS(text=chunk, lang=lang_code, tld=tld, slow=False)
+                        audio_fp = BytesIO()
+                        tts.write_to_fp(audio_fp)
+                        audio_fp.seek(0)
+                        audio_bytes = audio_fp.read()
+                        
+                        # Convert to base64
+                        audio_base64 = base64.b64encode(audio_bytes).decode()
+                        
+                        # Create individual audio player
+                        player_html = f"""
+                        <audio controls style="width: 100%; margin: 5px 0;">
+                            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                        </audio>
+                        """
+                        audio_players.append(player_html)
+                        break
+                        
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            time.sleep(0.5)
+                        else:
+                            st.warning(f"Chunk {i+1} skipped due to error")
             except Exception as e:
-                st.warning(f"⚠️ Translation failed, using English")
-                lang_code = "en"
-                tld = "com"
+                continue
         
-        # Generate audio - use lang_check=False to handle full text
-        st.info(f"🎵 Generating {target_language} audio for {ai_name}...")
+        if not audio_players:
+            st.error("Audio generation failed")
+            return None
         
-        # Split into sentences if text is very long (>500 chars)
-        if len(text_to_speak) > 500:
-            # Split by sentence endings
-            import re
-            sentences = re.split(r'(?<=[.!?])\s+', text_to_speak)
-            
-            # Combine audio from all chunks
-            combined_audio = BytesIO()
-            
-            for i, sentence in enumerate(sentences):
-                if sentence.strip():
-                    tts = gTTS(text=sentence.strip(), lang=lang_code, tld=tld, slow=False, lang_check=False)
-                    temp_audio = BytesIO()
-                    tts.write_to_fp(temp_audio)
-                    temp_audio.seek(0)
-                    combined_audio.write(temp_audio.read())
-            
-            combined_audio.seek(0)
-            audio_bytes = combined_audio.read()
-        else:
-            # For shorter text, generate normally
-            tts = gTTS(text=text_to_speak, lang=lang_code, tld=tld, slow=False, lang_check=False)
-            audio_fp = BytesIO()
-            tts.write_to_fp(audio_fp)
-            audio_fp.seek(0)
-            audio_bytes = audio_fp.read()
+        st.success(f"{target_language} audio generated! {len(audio_players)} part(s)")
         
-        # Convert to base64 for HTML5 audio
-        audio_base64 = base64.b64encode(audio_bytes).decode()
-        
-        audio_duration = len(audio_bytes) / 1024
-        st.success(f"✅ {target_language} audio generated successfully! (~{int(audio_duration)}KB)")
+        # Combine all audio players
+        all_players = "".join(audio_players)
         
         audio_html = f"""
         <div style="background: linear-gradient(135deg, #e8f5e8, #d4edda); padding: 20px; border-radius: 15px; border-left: 5px solid #28a745; margin: 15px 0;">
             <h4 style="color: #155724; margin-bottom: 10px;">🔊 {ai_name} - {target_language} Voice Response</h4>
-            <p style="color: #155724; font-size: 14px; margin-bottom: 10px;">Full response audio - Complete sentence (Click play button below)</p>
-            <audio controls style="width: 100%; margin-top: 10px;">
-                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-                Your browser does not support audio.
-            </audio>
+            <p style="color: #155724; font-size: 14px; margin-bottom: 10px;">Complete response ({len(audio_players)} part(s)) - Play in sequence:</p>
+            {all_players}
+            <p style="color: #155724; font-size: 12px; margin-top: 10px; font-style: italic;">Note: For longer responses, audio is split into parts. Play each part in order for the full response.</p>
         </div>
         """
         return audio_html
         
     except Exception as e:
-        st.error(f"❌ Audio generation failed: {str(e)}")
+        st.error(f"Audio generation failed: {str(e)}")
         return None
 
 # API functions
@@ -300,9 +319,9 @@ def call_openai_api(question, api_key):
         response = requests.post(url, headers=headers, json=data, timeout=30)
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"]
-        return f"❌ Error: {response.status_code}"
+        return f"Error: {response.status_code}"
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        return f"Error: {str(e)}"
 
 def call_anthropic_api(question, api_key):
     try:
@@ -320,9 +339,9 @@ def call_anthropic_api(question, api_key):
         response = requests.post(url, headers=headers, json=data, timeout=30)
         if response.status_code == 200:
             return response.json()["content"][0]["text"]
-        return f"❌ Error: {response.status_code}"
+        return f"Error: {response.status_code}"
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        return f"Error: {str(e)}"
 
 def call_groq_api(question, api_key):
     try:
@@ -336,27 +355,27 @@ def call_groq_api(question, api_key):
         response = requests.post(url, headers=headers, json=data, timeout=30)
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"]
-        return f"❌ Error: {response.status_code}"
+        return f"Error: {response.status_code}"
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        return f"Error: {str(e)}"
 
 # Main response generation
-if st.button("🤖 Get AI Responses with Voice", type="primary", use_container_width=True):
+if st.button("Get AI Responses with Voice", type="primary", use_container_width=True):
     if not question.strip():
-        st.warning("⚠️ Please enter a question!")
+        st.warning("Please enter a question!")
     else:
-        st.markdown("## 🤖 AI Responses")
+        st.markdown("## AI Responses")
         st.markdown(f"**Question:** {question}")
         st.markdown(f"**Voice Language:** {voice_language}")
         st.markdown("---")
         
         # OpenAI
         if openai_key:
-            st.markdown("### 🔵 OpenAI GPT-3.5")
+            st.markdown("### OpenAI GPT-3.5")
             with st.spinner("Getting OpenAI response..."):
                 response = call_openai_api(question, openai_key)
-                if not response.startswith("❌"):
-                    st.success("✅ OpenAI Response received!")
+                if not response.startswith("Error"):
+                    st.success("OpenAI Response received!")
                     st.write(response)
                     
                     audio_html = create_voice_response_html(response, voice_language, "OpenAI")
@@ -368,11 +387,11 @@ if st.button("🤖 Get AI Responses with Voice", type="primary", use_container_w
         
         # Claude
         if anthropic_key:
-            st.markdown("### 🟣 Anthropic Claude")
+            st.markdown("### Anthropic Claude")
             with st.spinner("Getting Claude response..."):
                 response = call_anthropic_api(question, anthropic_key)
-                if not response.startswith("❌"):
-                    st.success("✅ Claude Response received!")
+                if not response.startswith("Error"):
+                    st.success("Claude Response received!")
                     st.write(response)
                     
                     audio_html = create_voice_response_html(response, voice_language, "Claude")
@@ -384,11 +403,11 @@ if st.button("🤖 Get AI Responses with Voice", type="primary", use_container_w
         
         # Groq
         if groq_key:
-            st.markdown("### 🟢 Groq Llama")
+            st.markdown("### Groq Llama")
             with st.spinner("Getting Groq response..."):
                 response = call_groq_api(question, groq_key)
-                if not response.startswith("❌"):
-                    st.success("✅ Groq Response received!")
+                if not response.startswith("Error"):
+                    st.success("Groq Response received!")
                     st.write(response)
                     
                     audio_html = create_voice_response_html(response, voice_language, "Groq")
@@ -401,7 +420,7 @@ if st.button("🤖 Get AI Responses with Voice", type="primary", use_container_w
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; color: white;'>
-    <h3>🧠 Gyan AI - Triple AI Integration</h3>
+    <h3>Gyan AI - Triple AI Integration</h3>
     <p><strong>Voice Input | 3 AI Models | Multilingual Audio Output</strong></p>
 </div>
 """, unsafe_allow_html=True)
