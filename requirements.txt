@@ -1,4 +1,6 @@
 streamlit
-gtts
+openai
+anthropic
 requests
-python-dotenv
+deep-translator
+gTTS
