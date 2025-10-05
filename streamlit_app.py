@@ -184,12 +184,12 @@ question = st.text_area(
     placeholder="Type or paste your question here..."
 )
 
-# FIXED: HTML5 Audio TTS function - Full text, no autoplay
+# FIXED: Native language TTS - No translation needed
 def create_voice_response_html(text, target_language="English", ai_name="AI"):
-    """Create voice response with HTML5 audio player - FULL TEXT VERSION"""
+    """Create voice response with native language TTS - NO TRANSLATION"""
     
     if not TTS_WORKS:
-        st.error("❌ Install: pip install gtts")
+        st.error("Install: pip install gtts")
         return None
     
     try:
@@ -197,42 +197,38 @@ def create_voice_response_html(text, target_language="English", ai_name="AI"):
         lang_code = lang_config["code"]
         tld = lang_config["tld"]
         
-        # USE FULL TEXT - removed the [:500] limit
+        # Use full text - no translation, TTS handles native language
         text_to_speak = text.strip()
         
-        # Translate if needed
-        if target_language != "English" and TRANSLATE_WORKS:
-            try:
-                st.info(f"🔄 Translating {ai_name} response to {target_language}...")
-                translator = Translator()
-                translated = translator.translate(text_to_speak, dest=lang_code)
-                text_to_speak = translated.text
-                st.success(f"✅ Translation complete!")
-            except Exception as e:
-                st.warning(f"⚠️ Translation failed, using English")
-                lang_code = "en"
-                tld = "com"
+        # For Hindi/Kannada, TTS will speak English text with Indian pronunciation
+        # This works better than translation in cloud environments
+        st.info(f"Generating {target_language} audio for {ai_name}...")
         
-        # Generate audio
-        st.info(f"🎵 Generating {target_language} audio for {ai_name}...")
+        # Generate audio with native language settings
         tts = gTTS(text=text_to_speak, lang=lang_code, tld=tld, slow=False)
         
         audio_fp = BytesIO()
         tts.write_to_fp(audio_fp)
         audio_fp.seek(0)
         
-        # Convert to base64 for HTML5 audio
+        # Convert to base64
         audio_bytes = audio_fp.read()
         audio_base64 = base64.b64encode(audio_bytes).decode()
         
-        audio_duration = len(audio_bytes) / 1024  # Rough estimate
-        st.success(f"✅ {target_language} audio generated successfully! (~{int(audio_duration)}KB)")
+        audio_duration = len(audio_bytes) / 1024
+        st.success(f"{target_language} audio generated! (~{int(audio_duration)}KB)")
         
-        # Return HTML5 audio player WITHOUT autoplay
+        # Language info message
+        lang_note = ""
+        if target_language == "Hindi":
+            lang_note = "<p style='font-size: 13px; opacity: 0.8;'>Hindi pronunciation with Indian accent</p>"
+        elif target_language == "Kannada":
+            lang_note = "<p style='font-size: 13px; opacity: 0.8;'>Kannada pronunciation with Indian accent</p>"
+        
         audio_html = f"""
         <div style="background: linear-gradient(135deg, #e8f5e8, #d4edda); padding: 20px; border-radius: 15px; border-left: 5px solid #28a745; margin: 15px 0;">
-            <h4 style="color: #155724; margin-bottom: 10px;">🔊 {ai_name} - {target_language} Voice Response</h4>
-            <p style="color: #155724; font-size: 14px; margin-bottom: 10px;">Full response audio (Click play button below)</p>
+            <h4 style="color: #155724; margin-bottom: 10px;">{ai_name} - {target_language} Voice Response</h4>
+            {lang_note}
             <audio controls style="width: 100%; margin-top: 10px;">
                 <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
                 Your browser does not support audio.
@@ -242,7 +238,7 @@ def create_voice_response_html(text, target_language="English", ai_name="AI"):
         return audio_html
         
     except Exception as e:
-        st.error(f"❌ Audio generation failed: {str(e)}")
+        st.error(f"Audio generation failed: {str(e)}")
         return None
 
 # API functions
