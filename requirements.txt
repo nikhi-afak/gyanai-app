@@ -2,6 +2,4 @@ streamlit
 openai
 anthropic
 requests
-deep-translator
 gTTS
-python-dotenv
