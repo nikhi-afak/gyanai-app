@@ -17,11 +17,8 @@ try:
 except ImportError:
     TTS_WORKS = False
 
-try:
-    from deep_translator import GoogleTranslator
-    TRANSLATE_WORKS = True
-except ImportError:
-    TRANSLATE_WORKS = False
+# Translation works via direct API - no library needed
+TRANSLATE_WORKS = True
 
 # Page setup
 st.set_page_config(page_title="🧠 Gyan AI", page_icon="🧠", layout="wide")
@@ -58,9 +55,6 @@ st.sidebar.write(f"Translator: {'✅' if TRANSLATE_WORKS else '❌'}")
 
 if not TTS_WORKS:
     st.sidebar.error("⚠️ Install TTS: pip install gtts")
-
-if not TRANSLATE_WORKS and voice_language != "English":
-    st.sidebar.warning("⚠️ For translations: pip install deep-translator")
 
 # Enhanced Voice Input Section
 st.header("🎤 Voice Input System")
@@ -184,23 +178,40 @@ question = st.text_area(
     placeholder="Type or paste your question here..."
 )
 
-# FIXED: Translation function using deep-translator
+# Translation function using direct API - no library required
 def translate_text(text, target_language):
-    """Translate text using deep-translator (more reliable than googletrans)"""
-    if not TRANSLATE_WORKS or target_language == "English":
+    """Translate using Google Translate API directly - no external library needed"""
+    if target_language == "English":
         return text
     
     try:
         lang_code = VOICE_LANGS[target_language]["code"]
-        translated = GoogleTranslator(source='auto', target=lang_code).translate(text)
-        return translated
+        
+        # Using Google Translate free endpoint
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            'client': 'gtx',
+            'sl': 'en',
+            'tl': lang_code,
+            'dt': 't',
+            'q': text
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            result = response.json()
+            translated = result[0][0][0]
+            return translated
+        else:
+            return text
+            
     except Exception as e:
-        st.warning(f"Translation failed: {str(e)}, using English")
+        st.warning(f"Translation to {target_language} unavailable, using English")
         return text
 
-# FIXED: HTML5 Audio TTS function with deep-translator
+# HTML5 Audio TTS function
 def create_voice_response_html(text, target_language="English", ai_name="AI"):
-    """Create voice response with HTML5 audio player - FULL TEXT VERSION"""
+    """Create voice response with HTML5 audio player"""
     
     if not TTS_WORKS:
         st.error("❌ Install: pip install gtts")
@@ -213,8 +224,8 @@ def create_voice_response_html(text, target_language="English", ai_name="AI"):
         
         text_to_speak = text.strip()
         
-        # Translate if needed using deep-translator
-        if target_language != "English" and TRANSLATE_WORKS:
+        # Translate if needed
+        if target_language != "English":
             try:
                 st.info(f"🔄 Translating {ai_name} response to {target_language}...")
                 text_to_speak = translate_text(text_to_speak, target_language)
@@ -239,7 +250,6 @@ def create_voice_response_html(text, target_language="English", ai_name="AI"):
         audio_duration = len(audio_bytes) / 1024
         st.success(f"✅ {target_language} audio generated successfully! (~{int(audio_duration)}KB)")
         
-        # Return HTML5 audio player WITHOUT autoplay
         audio_html = f"""
         <div style="background: linear-gradient(135deg, #e8f5e8, #d4edda); padding: 20px; border-radius: 15px; border-left: 5px solid #28a745; margin: 15px 0;">
             <h4 style="color: #155724; margin-bottom: 10px;">🔊 {ai_name} - {target_language} Voice Response</h4>
