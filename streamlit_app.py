@@ -209,9 +209,9 @@ def translate_text(text, target_language):
         st.warning(f"Translation to {target_language} unavailable, using English")
         return text
 
-# HTML5 Audio TTS function
+# HTML5 Audio TTS function with chunking for full text
 def create_voice_response_html(text, target_language="English", ai_name="AI"):
-    """Create voice response with HTML5 audio player"""
+    """Create voice response with HTML5 audio player - handles long text"""
     
     if not TTS_WORKS:
         st.error("❌ Install: pip install gtts")
@@ -235,16 +235,37 @@ def create_voice_response_html(text, target_language="English", ai_name="AI"):
                 lang_code = "en"
                 tld = "com"
         
-        # Generate audio
+        # Generate audio - use lang_check=False to handle full text
         st.info(f"🎵 Generating {target_language} audio for {ai_name}...")
-        tts = gTTS(text=text_to_speak, lang=lang_code, tld=tld, slow=False)
         
-        audio_fp = BytesIO()
-        tts.write_to_fp(audio_fp)
-        audio_fp.seek(0)
+        # Split into sentences if text is very long (>500 chars)
+        if len(text_to_speak) > 500:
+            # Split by sentence endings
+            import re
+            sentences = re.split(r'(?<=[.!?])\s+', text_to_speak)
+            
+            # Combine audio from all chunks
+            combined_audio = BytesIO()
+            
+            for i, sentence in enumerate(sentences):
+                if sentence.strip():
+                    tts = gTTS(text=sentence.strip(), lang=lang_code, tld=tld, slow=False, lang_check=False)
+                    temp_audio = BytesIO()
+                    tts.write_to_fp(temp_audio)
+                    temp_audio.seek(0)
+                    combined_audio.write(temp_audio.read())
+            
+            combined_audio.seek(0)
+            audio_bytes = combined_audio.read()
+        else:
+            # For shorter text, generate normally
+            tts = gTTS(text=text_to_speak, lang=lang_code, tld=tld, slow=False, lang_check=False)
+            audio_fp = BytesIO()
+            tts.write_to_fp(audio_fp)
+            audio_fp.seek(0)
+            audio_bytes = audio_fp.read()
         
         # Convert to base64 for HTML5 audio
-        audio_bytes = audio_fp.read()
         audio_base64 = base64.b64encode(audio_bytes).decode()
         
         audio_duration = len(audio_bytes) / 1024
@@ -253,7 +274,7 @@ def create_voice_response_html(text, target_language="English", ai_name="AI"):
         audio_html = f"""
         <div style="background: linear-gradient(135deg, #e8f5e8, #d4edda); padding: 20px; border-radius: 15px; border-left: 5px solid #28a745; margin: 15px 0;">
             <h4 style="color: #155724; margin-bottom: 10px;">🔊 {ai_name} - {target_language} Voice Response</h4>
-            <p style="color: #155724; font-size: 14px; margin-bottom: 10px;">Full response audio (Click play button below)</p>
+            <p style="color: #155724; font-size: 14px; margin-bottom: 10px;">Full response audio - Complete sentence (Click play button below)</p>
             <audio controls style="width: 100%; margin-top: 10px;">
                 <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
                 Your browser does not support audio.
