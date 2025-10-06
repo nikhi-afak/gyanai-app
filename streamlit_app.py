@@ -3,8 +3,8 @@ import os
 import base64
 from io import BytesIO
 import requests
+import re
 
-# Simple imports
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -19,7 +19,6 @@ except ImportError:
 
 TRANSLATE_WORKS = True
 
-# Page setup
 st.set_page_config(page_title="Gyan AI", page_icon="🧠", layout="wide")
 st.title("🧠 Gyan AI - Voice-Enabled Educational Assistant")
 
@@ -32,8 +31,7 @@ groq_key = os.getenv("GROQ_API_KEY") or st.sidebar.text_input("Groq API Key:", t
 st.sidebar.header("🔊 Voice Settings")
 voice_language = st.sidebar.selectbox(
     "Select Voice Output Language:",
-    ["English", "Hindi", "Kannada"],
-    help="Language for AI response audio"
+    ["English", "Hindi", "Kannada"]
 )
 
 VOICE_LANGS = {
@@ -50,299 +48,190 @@ st.sidebar.write(f"TTS Engine: {'✅' if TTS_WORKS else '❌'}")
 st.sidebar.write(f"Translator: {'✅' if TRANSLATE_WORKS else '❌'}")
 
 # Voice Input
-st.header("🎤 Voice Input System")
-
-voice_input_html = """
-<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 20px; margin: 20px 0;">
-    <h2 style="text-align: center; color: white; margin-bottom: 30px;">🎙️ Voice Recognition</h2>
-    <div style="text-align: center; margin: 25px 0;">
-        <button onclick="startVoiceRecording()" id="startBtn" 
-                style="background: #4CAF50; color: white; padding: 18px 35px; border: none; border-radius: 15px; font-size: 18px; font-weight: bold; margin: 10px; cursor: pointer;">
-            🎤 START
-        </button>
-        <button onclick="stopVoiceRecording()" id="stopBtn"
-                style="background: #f44336; color: white; padding: 18px 35px; border: none; border-radius: 15px; font-size: 18px; font-weight: bold; margin: 10px; cursor: pointer;">
-            ⏹️ STOP
-        </button>
-        <button onclick="copyVoiceText()" id="copyBtn"
-                style="background: #2196F3; color: white; padding: 18px 35px; border: none; border-radius: 15px; font-size: 18px; font-weight: bold; margin: 10px; cursor: pointer;">
-            📋 COPY
-        </button>
+st.header("🎤 Voice Input")
+voice_html = """
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 15px;">
+    <div style="text-align: center;">
+        <button onclick="startRec()" style="background: #4CAF50; color: white; padding: 15px 30px; border: none; border-radius: 10px; font-size: 16px; margin: 5px; cursor: pointer;">🎤 START</button>
+        <button onclick="stopRec()" style="background: #f44336; color: white; padding: 15px 30px; border: none; border-radius: 10px; font-size: 16px; margin: 5px; cursor: pointer;">⏹️ STOP</button>
     </div>
-    <div id="voiceStatus" style="text-align: center; padding: 20px; background: rgba(255,255,255,0.9); border-radius: 15px; margin: 20px 0; font-weight: bold; font-size: 18px; color: #333;">
-        Ready to record
-    </div>
-    <div id="voiceOutput" style="padding: 25px; background: white; border-radius: 15px; min-height: 120px; margin: 20px 0; font-size: 16px; color: #333;">
-        Your voice input will appear here...
-    </div>
+    <div id="status" style="text-align: center; padding: 15px; background: white; border-radius: 10px; margin: 15px 0;">Ready</div>
+    <div id="output" style="padding: 15px; background: white; border-radius: 10px; min-height: 80px;">Your text here...</div>
 </div>
-
 <script>
-let voiceRecognition;
-let isRecording = false;
-let recordedText = '';
-
-function startVoiceRecording() {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        document.getElementById('voiceStatus').innerHTML = 'Speech recognition not supported';
-        return;
-    }
-    
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    voiceRecognition = new SpeechRecognition();
-    voiceRecognition.continuous = true;
-    voiceRecognition.interimResults = true;
-    voiceRecognition.lang = 'en-US';
-    
-    voiceRecognition.onstart = function() {
-        isRecording = true;
-        document.getElementById('voiceStatus').innerHTML = '🎤 RECORDING...';
-        document.getElementById('voiceOutput').innerHTML = 'Listening...';
-    };
-    
-    voiceRecognition.onresult = function(event) {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-            if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript + ' ';
-            }
-        }
-        if (finalTranscript) {
-            recordedText = finalTranscript.trim();
-            document.getElementById('voiceOutput').innerHTML = '<strong>✅ RECOGNIZED:</strong><br>' + recordedText;
-        }
-    };
-    
-    voiceRecognition.onend = function() {
-        isRecording = false;
-        if (recordedText) {
-            document.getElementById('voiceStatus').innerHTML = '✅ Recording complete!';
-        }
-    };
-    
-    voiceRecognition.start();
+let rec; let txt = '';
+function startRec() {
+    if (!('webkitSpeechRecognition' in window)) { document.getElementById('status').innerHTML = 'Not supported'; return; }
+    rec = new webkitSpeechRecognition(); rec.continuous = true; rec.interimResults = true;
+    rec.onstart = () => { document.getElementById('status').innerHTML = 'Recording...'; };
+    rec.onresult = (e) => { let final = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) final += e.results[i][0].transcript + ' '; } if (final) { txt = final.trim(); document.getElementById('output').innerHTML = txt; } };
+    rec.onend = () => { document.getElementById('status').innerHTML = 'Done'; };
+    rec.start();
 }
-
-function stopVoiceRecording() {
-    if (voiceRecognition && isRecording) {
-        voiceRecognition.stop();
-    }
-}
-
-function copyVoiceText() {
-    if (recordedText) {
-        navigator.clipboard.writeText(recordedText);
-        document.getElementById('voiceStatus').innerHTML = '✅ Text copied!';
-    }
-}
+function stopRec() { if (rec) rec.stop(); }
 </script>
 """
+st.components.v1.html(voice_html, height=300)
 
-st.components.v1.html(voice_input_html, height=500)
+st.header("💬 Question")
+question = st.text_area("Enter question:", height=100)
 
-st.header("💬 Question Input")
-question = st.text_area("Enter your question:", height=120, placeholder="Type or paste your question here...")
-
-# Translation
-def translate_text(text, target_language):
-    if target_language == "English":
-        return text
-    
+def translate_text(text, lang):
+    if lang == "English": return text
     try:
-        lang_code = VOICE_LANGS[target_language]["code"]
-        url = "https://translate.googleapis.com/translate_a/single"
-        params = {'client': 'gtx', 'sl': 'en', 'tl': lang_code, 'dt': 't', 'q': text}
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code == 200:
-            return response.json()[0][0][0]
-        return text
-    except:
-        return text
+        code = VOICE_LANGS[lang]["code"]
+        r = requests.get("https://translate.googleapis.com/translate_a/single", 
+                        params={'client': 'gtx', 'sl': 'en', 'tl': code, 'dt': 't', 'q': text}, timeout=10)
+        return r.json()[0][0][0] if r.status_code == 200 else text
+    except: return text
 
-# WORKING TTS - Auto-playing sequential chunks
-def create_voice_response(text, target_language, ai_name):
-    if not TTS_WORKS:
-        st.error("TTS not available")
-        return
-    
+# THE FIX - Split into very small chunks and play sequentially
+def create_voice(text, lang, name):
+    if not TTS_WORKS: return
     try:
-        lang_config = VOICE_LANGS[target_language]
-        lang_code = lang_config["code"]
-        tld = lang_config["tld"]
+        cfg = VOICE_LANGS[lang]
+        txt = text.strip()
         
-        text_to_speak = text.strip()
+        if lang != "English":
+            st.info(f"Translating to {lang}...")
+            txt = translate_text(txt, lang)
+            st.success("Translated")
         
-        # Translate if needed
-        if target_language != "English":
-            st.info(f"Translating to {target_language}...")
-            text_to_speak = translate_text(text_to_speak, target_language)
-            st.success("Translation complete!")
+        st.info("Generating audio...")
         
-        st.info(f"Generating {target_language} audio...")
+        # Split into 100-character chunks (safe for gTTS)
+        chunks = []
+        words = txt.split()
+        current = ""
         
-        # Split by sentences to avoid gTTS length limits
-        import re
-        sentences = re.split(r'(?<=[.!?।])\s+', text_to_speak)
-        sentences = [s.strip() for s in sentences if s.strip()]
+        for word in words:
+            if len(current) + len(word) < 100:
+                current += word + " "
+            else:
+                if current: chunks.append(current.strip())
+                current = word + " "
+        if current: chunks.append(current.strip())
         
-        st.success(f"Creating {len(sentences)} audio parts...")
+        # Generate all audio parts
+        parts = []
+        for chunk in chunks:
+            tts = gTTS(text=chunk, lang=cfg["code"], tld=cfg["tld"], slow=False)
+            fp = BytesIO()
+            tts.write_to_fp(fp)
+            fp.seek(0)
+            parts.append(base64.b64encode(fp.read()).decode())
         
-        # Create HTML with auto-playing sequential audio
-        audio_parts = []
-        for i, sentence in enumerate(sentences):
-            try:
-                tts = gTTS(text=sentence, lang=lang_code, tld=tld, slow=False)
-                audio_fp = BytesIO()
-                tts.write_to_fp(audio_fp)
-                audio_fp.seek(0)
-                audio_bytes = audio_fp.read()
-                audio_base64 = base64.b64encode(audio_bytes).decode()
-                audio_parts.append(audio_base64)
-            except Exception as e:
-                st.warning(f"Sentence {i+1} skipped")
-                continue
-        
-        if not audio_parts:
-            st.error("Audio generation failed")
-            return
-        
-        # Generate HTML with sequential auto-play
-        audio_html = f"""
-        <div style="background: linear-gradient(135deg, #e8f5e8, #d4edda); padding: 20px; border-radius: 15px; border-left: 5px solid #28a745; margin: 15px 0;">
-            <h4 style="color: #155724; margin-bottom: 10px;">{ai_name} - {target_language} Voice</h4>
-            <p style="color: #155724; font-size: 14px;">Playing complete response ({len(audio_parts)} parts)</p>
-            <div id="audio-player-{ai_name}">
-                <div id="status-{ai_name}" style="padding: 10px; background: #d1ecf1; border-radius: 5px; margin: 10px 0; color: #0c5460;">
-                    Click play to start →
-                </div>
-                <audio id="audio-{ai_name}" controls style="width: 100%;">
-                    <source src="data:audio/mp3;base64,{audio_parts[0]}" type="audio/mp3">
-                </audio>
-            </div>
+        # Create auto-playing HTML
+        html = f"""
+        <div style="background: #d4edda; padding: 15px; border-radius: 10px; margin: 10px 0;">
+            <h4 style="color: #155724;">{name} - {lang}</h4>
+            <p id="stat-{name}" style="color: #155724;">Click play to start</p>
+            <audio id="aud-{name}" controls style="width: 100%;"></audio>
         </div>
-        
         <script>
         (function() {{
-            const audioParts = {audio_parts};
-            let currentPart = 0;
-            const audioElement = document.getElementById('audio-{ai_name}');
-            const statusElement = document.getElementById('status-{ai_name}');
+            const parts = {parts};
+            let idx = 0;
+            const aud = document.getElementById('aud-{name}');
+            const stat = document.getElementById('stat-{name}');
             
-            audioElement.addEventListener('ended', function() {{
-                currentPart++;
-                if (currentPart < audioParts.length) {{
-                    statusElement.innerHTML = 'Playing part ' + (currentPart + 1) + ' of ' + audioParts.length;
-                    audioElement.src = 'data:audio/mp3;base64,' + audioParts[currentPart];
-                    audioElement.play();
+            aud.src = 'data:audio/mp3;base64,' + parts[0];
+            
+            aud.onended = function() {{
+                idx++;
+                if (idx < parts.length) {{
+                    stat.innerHTML = 'Part ' + (idx + 1) + ' of ' + parts.length;
+                    aud.src = 'data:audio/mp3;base64,' + parts[idx];
+                    aud.play();
                 }} else {{
-                    statusElement.innerHTML = '✅ Complete response played!';
-                    statusElement.style.background = '#d4edda';
+                    stat.innerHTML = 'Complete!';
                 }}
-            }});
+            }};
             
-            audioElement.addEventListener('play', function() {{
-                statusElement.innerHTML = '🔊 Playing part ' + (currentPart + 1) + ' of ' + audioParts.length;
-            }});
+            aud.onplay = function() {{
+                stat.innerHTML = 'Playing part ' + (idx + 1) + ' of ' + parts.length;
+            }};
         }})();
         </script>
         """
         
-        st.markdown(audio_html, unsafe_allow_html=True)
-        st.success(f"{target_language} audio ready - full response!")
-        
+        st.markdown(html, unsafe_allow_html=True)
+        st.success(f"Audio ready ({len(parts)} parts)")
     except Exception as e:
-        st.error(f"Audio generation failed: {str(e)}")
+        st.error(f"Error: {e}")
 
-# API functions
-def call_openai_api(question, api_key):
+def call_openai(q, key):
     try:
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        data = {"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": question}], "max_tokens": 500}
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"]
-        return f"Error: {response.status_code}"
-    except Exception as e:
-        return f"Error: {str(e)}"
+        r = requests.post("https://api.openai.com/v1/chat/completions",
+                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                         json={"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": q}], "max_tokens": 500}, timeout=30)
+        return r.json()["choices"][0]["message"]["content"] if r.status_code == 200 else f"Error {r.status_code}"
+    except Exception as e: return f"Error: {e}"
 
-def call_anthropic_api(question, api_key):
+def call_claude(q, key):
     try:
-        url = "https://api.anthropic.com/v1/messages"
-        headers = {"x-api-key": api_key, "Content-Type": "application/json", "anthropic-version": "2023-06-01"}
-        data = {"model": "claude-3-haiku-20240307", "max_tokens": 500, "messages": [{"role": "user", "content": question}]}
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        if response.status_code == 200:
-            return response.json()["content"][0]["text"]
-        return f"Error: {response.status_code}"
-    except Exception as e:
-        return f"Error: {str(e)}"
+        r = requests.post("https://api.anthropic.com/v1/messages",
+                         headers={"x-api-key": key, "Content-Type": "application/json", "anthropic-version": "2023-06-01"},
+                         json={"model": "claude-3-haiku-20240307", "max_tokens": 500, "messages": [{"role": "user", "content": q}]}, timeout=30)
+        return r.json()["content"][0]["text"] if r.status_code == 200 else f"Error {r.status_code}"
+    except Exception as e: return f"Error: {e}"
 
-def call_groq_api(question, api_key):
+def call_groq(q, key):
     try:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        data = {"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": question}], "max_tokens": 500}
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"]
-        return f"Error: {response.status_code}"
-    except Exception as e:
-        return f"Error: {str(e)}"
+        r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                         json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": q}], "max_tokens": 500}, timeout=30)
+        return r.json()["choices"][0]["message"]["content"] if r.status_code == 200 else f"Error {r.status_code}"
+    except Exception as e: return f"Error: {e}"
 
-# Main
-if st.button("Get AI Responses with Voice", type="primary", use_container_width=True):
+if st.button("Get AI Responses", type="primary", use_container_width=True):
     if not question.strip():
-        st.warning("Please enter a question!")
+        st.warning("Enter a question")
     else:
-        st.markdown("## AI Responses")
+        st.markdown("## Responses")
         st.markdown(f"**Question:** {question}")
-        st.markdown(f"**Voice Language:** {voice_language}")
+        st.markdown(f"**Language:** {voice_language}")
         st.markdown("---")
         
-        # OpenAI
         if openai_key:
-            st.markdown("### OpenAI GPT-3.5")
-            with st.spinner("Getting OpenAI response..."):
-                response = call_openai_api(question, openai_key)
-                if not response.startswith("Error"):
-                    st.success("OpenAI Response received!")
-                    st.write(response)
-                    create_voice_response(response, voice_language, "OpenAI")
+            st.markdown("### OpenAI")
+            with st.spinner("Getting response..."):
+                resp = call_openai(question, openai_key)
+                if not resp.startswith("Error"):
+                    st.success("Response received")
+                    st.write(resp)
+                    create_voice(resp, voice_language, "OpenAI")
                 else:
-                    st.error(response)
+                    st.error(resp)
             st.markdown("---")
         
-        # Claude
         if anthropic_key:
-            st.markdown("### Anthropic Claude")
-            with st.spinner("Getting Claude response..."):
-                response = call_anthropic_api(question, anthropic_key)
-                if not response.startswith("Error"):
-                    st.success("Claude Response received!")
-                    st.write(response)
-                    create_voice_response(response, voice_language, "Claude")
+            st.markdown("### Claude")
+            with st.spinner("Getting response..."):
+                resp = call_claude(question, anthropic_key)
+                if not resp.startswith("Error"):
+                    st.success("Response received")
+                    st.write(resp)
+                    create_voice(resp, voice_language, "Claude")
                 else:
-                    st.error(response)
+                    st.error(resp)
             st.markdown("---")
         
-        # Groq
         if groq_key:
-            st.markdown("### Groq Llama")
-            with st.spinner("Getting Groq response..."):
-                response = call_groq_api(question, groq_key)
-                if not response.startswith("Error"):
-                    st.success("Groq Response received!")
-                    st.write(response)
-                    create_voice_response(response, voice_language, "Groq")
+            st.markdown("### Groq")
+            with st.spinner("Getting response..."):
+                resp = call_groq(question, groq_key)
+                if not resp.startswith("Error"):
+                    st.success("Response received")
+                    st.write(resp)
+                    create_voice(resp, voice_language, "Groq")
                 else:
-                    st.error(response)
+                    st.error(resp)
 
-# Footer
 st.markdown("---")
 st.markdown("""
-<div style='text-align: center; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; color: white;'>
+<div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; color: white;'>
     <h3>Gyan AI - Triple AI Integration</h3>
-    <p><strong>Voice Input | 3 AI Models | Multilingual Audio Output</strong></p>
+    <p>Voice Input | 3 AI Models | Multilingual Audio</p>
 </div>
 """, unsafe_allow_html=True)
