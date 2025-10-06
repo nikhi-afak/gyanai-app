@@ -159,7 +159,7 @@ def translate_text(text, target_language):
     except:
         return text
 
-# COMPLETELY REWRITTEN TTS - WORKING VERSION
+# WORKING TTS - Auto-playing sequential chunks
 def create_voice_response(text, target_language, ai_name):
     if not TTS_WORKS:
         st.error("TTS not available")
@@ -180,16 +180,75 @@ def create_voice_response(text, target_language, ai_name):
         
         st.info(f"Generating {target_language} audio...")
         
-        # Generate TTS - this is the working method
-        tts = gTTS(text=text_to_speak, lang=lang_code, tld=tld, slow=False)
+        # Split by sentences to avoid gTTS length limits
+        import re
+        sentences = re.split(r'(?<=[.!?।])\s+', text_to_speak)
+        sentences = [s.strip() for s in sentences if s.strip()]
         
-        audio_fp = BytesIO()
-        tts.write_to_fp(audio_fp)
-        audio_fp.seek(0)
+        st.success(f"Creating {len(sentences)} audio parts...")
         
-        # Use Streamlit's native audio player
-        st.audio(audio_fp, format='audio/mp3')
-        st.success(f"{target_language} audio ready!")
+        # Create HTML with auto-playing sequential audio
+        audio_parts = []
+        for i, sentence in enumerate(sentences):
+            try:
+                tts = gTTS(text=sentence, lang=lang_code, tld=tld, slow=False)
+                audio_fp = BytesIO()
+                tts.write_to_fp(audio_fp)
+                audio_fp.seek(0)
+                audio_bytes = audio_fp.read()
+                audio_base64 = base64.b64encode(audio_bytes).decode()
+                audio_parts.append(audio_base64)
+            except Exception as e:
+                st.warning(f"Sentence {i+1} skipped")
+                continue
+        
+        if not audio_parts:
+            st.error("Audio generation failed")
+            return
+        
+        # Generate HTML with sequential auto-play
+        audio_html = f"""
+        <div style="background: linear-gradient(135deg, #e8f5e8, #d4edda); padding: 20px; border-radius: 15px; border-left: 5px solid #28a745; margin: 15px 0;">
+            <h4 style="color: #155724; margin-bottom: 10px;">{ai_name} - {target_language} Voice</h4>
+            <p style="color: #155724; font-size: 14px;">Playing complete response ({len(audio_parts)} parts)</p>
+            <div id="audio-player-{ai_name}">
+                <div id="status-{ai_name}" style="padding: 10px; background: #d1ecf1; border-radius: 5px; margin: 10px 0; color: #0c5460;">
+                    Click play to start →
+                </div>
+                <audio id="audio-{ai_name}" controls style="width: 100%;">
+                    <source src="data:audio/mp3;base64,{audio_parts[0]}" type="audio/mp3">
+                </audio>
+            </div>
+        </div>
+        
+        <script>
+        (function() {{
+            const audioParts = {audio_parts};
+            let currentPart = 0;
+            const audioElement = document.getElementById('audio-{ai_name}');
+            const statusElement = document.getElementById('status-{ai_name}');
+            
+            audioElement.addEventListener('ended', function() {{
+                currentPart++;
+                if (currentPart < audioParts.length) {{
+                    statusElement.innerHTML = 'Playing part ' + (currentPart + 1) + ' of ' + audioParts.length;
+                    audioElement.src = 'data:audio/mp3;base64,' + audioParts[currentPart];
+                    audioElement.play();
+                }} else {{
+                    statusElement.innerHTML = '✅ Complete response played!';
+                    statusElement.style.background = '#d4edda';
+                }}
+            }});
+            
+            audioElement.addEventListener('play', function() {{
+                statusElement.innerHTML = '🔊 Playing part ' + (currentPart + 1) + ' of ' + audioParts.length;
+            }});
+        }})();
+        </script>
+        """
+        
+        st.markdown(audio_html, unsafe_allow_html=True)
+        st.success(f"{target_language} audio ready - full response!")
         
     except Exception as e:
         st.error(f"Audio generation failed: {str(e)}")
