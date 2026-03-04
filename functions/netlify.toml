@@ -1,0 +1,17 @@
+[build]
+  command = "pip install -r requirements.txt"
+  publish = "."
+
+[build.environment]
+  PYTHON_VERSION = "3.9"
+
+[[redirects]]
+  from = "/"
+  to = "/.netlify/functions/streamlit"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/verification"
+  to = "/verification.html"
+  status = 200
