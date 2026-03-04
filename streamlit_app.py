@@ -6,13 +6,12 @@ st.set_page_config(
     page_icon="🧠"
 )
 
-# Add Google verification meta tag
+# Add Google verification meta tag - UPDATED WITH NEW TAG
 st.markdown("""
-<meta name="google-site-verification" content="z7zECl3lJPrWf9m9lmTOXFMtpQuM7s8nTr4r3B1LvZI" />
+<meta name="google-site-verification" content="0MwLC31PFFaw5mRLZAPgnFxZLcPkNZ4bImhTgkoumKQ" />
 """, unsafe_allow_html=True)
 
 # Rest of your existing Streamlit code...
-import streamlit as st
 import os
 import base64
 from io import BytesIO
@@ -33,7 +32,6 @@ except ImportError:
 
 TRANSLATE_WORKS = True
 
-st.set_page_config(page_title="Gyan AI", page_icon="🧠", layout="wide")
 st.title("🧠 Gyan AI - Voice-Enabled Educational Assistant")
 
 # Sidebar
@@ -99,7 +97,6 @@ def translate_text(text, lang):
         return r.json()[0][0][0] if r.status_code == 200 else text
     except: return text
 
-# THE FIX - Split into very small chunks and play sequentially
 def create_voice(text, lang, name):
     if not TTS_WORKS: return
     try:
