@@ -1,4 +1,18 @@
 import streamlit as st
+
+# Configure page and add Google verification
+st.set_page_config(
+    page_title="GyanAI",
+    page_icon="🧠"
+)
+
+# Add Google verification meta tag
+st.markdown("""
+<meta name="google-site-verification" content="z7zECl3lJPrWf9m9lmTOXFMtpQuM7s8nTr4r3B1LvZI" />
+""", unsafe_allow_html=True)
+
+# Rest of your existing Streamlit code...
+import streamlit as st
 import os
 import base64
 from io import BytesIO
